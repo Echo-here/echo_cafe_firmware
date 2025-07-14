@@ -11,7 +11,7 @@
 class ServoMT {
 public:
     // 생성자
-    ServoMT(int pin);
+    ServoMT(int pin, String name);
 
     // 서보 각도 설정
     void setAngle(int angle);
@@ -21,11 +21,14 @@ public:
     void setMinAngle();
     // 현재 각도 반환
     int getAngle() const;
+    // 이름 반환
+    String getName() const;
 
 private:
     int servoPin;
     int currentAngle;
     Servo servo;
+    String name;
 };
 
 #endif // SERVOMT_H
