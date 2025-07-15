@@ -49,7 +49,6 @@ bool SerialCommand::validateCommand(const Command& cmd) {
         return false;
     }
     
-    
     if (cmd.value < MIN_DURATION) {
         cmd.errorMessage = "Duration too short (minimum: " + String(MIN_DURATION) + "s)";
         return false;
@@ -74,7 +73,7 @@ CommandType SerialCommand::getCommandType(const String& commandString) {
     }
     
     // 첫 번째 문자 찾기 (공백 무시)
-    int startPos = 0;
+    size_t startPos = 0;
     while (startPos < commandString.length() && commandString[startPos] == ' ') {
         startPos++;
     }
@@ -96,7 +95,7 @@ CommandType SerialCommand::getCommandType(const String& commandString) {
 
 float SerialCommand::extractValue(const String& commandString) {
     // 첫 번째 문자 찾기 (공백 무시)
-    int startPos = 0;
+    size_t startPos = 0;
     while (startPos < commandString.length() && commandString[startPos] == ' ') {
         startPos++;
     }

@@ -1,18 +1,19 @@
 #include "PumpMT.h"
 
-PumpMT::PumpMT(int pin, String name) : pumpPin(pin), pumpState(false), name(name) {
+PumpMT::PumpMT(int pin, String name) 
+    : pumpPin(pin), pumpState(false), name(name) {
     pinMode(pumpPin, OUTPUT);
-    digitalWrite(pumpPin, PUMP_OFF);  // 초기 상태: 펌프 OFF
+    digitalWrite(pumpPin, PUMP_STATE_OFF);  // 초기 상태: 펌프 OFF
     Serial.println(name + " PumpMT initialized");
 }
 
 void PumpMT::turnOn() {
-    digitalWrite(pumpPin, PUMP_ON);
+    digitalWrite(pumpPin, PUMP_STATE_ON);
     pumpState = true;
 }
 
 void PumpMT::turnOff() {
-    digitalWrite(pumpPin, PUMP_OFF);
+    digitalWrite(pumpPin, PUMP_STATE_OFF);
     pumpState = false;
 }
 

@@ -1,7 +1,7 @@
 #include "StockSensor.h"
 
 StockSensor::StockSensor(int laserPin, int lightSensorPin, String name) 
-    : laserPin(laserPin), lightSensorPin(lightSensorPin), currentLightValue(STOCK_EMPTY), laserState(false), name(name) {
+    : laserPin(laserPin), lightSensorPin(lightSensorPin), currentLightValue(STOCK_STATE_EMPTY), laserState(false), name(name) {
     
     pinMode(laserPin, OUTPUT);
     pinMode(lightSensorPin, INPUT);
@@ -34,17 +34,17 @@ int StockSensor::readLightSensor() {
 
 bool StockSensor::isStockPresent() {
     readLightSensor();  // 현재 상태 업데이트
-    return (currentLightValue == STOCK_FULL);
+    return (currentLightValue == STOCK_STATE_FULL);
 }
 
 bool StockSensor::isStockEmpty() {
     readLightSensor();  // 현재 상태 업데이트
-    return (currentLightValue == STOCK_EMPTY);
+    return (currentLightValue == STOCK_STATE_EMPTY);
 }
 
 String StockSensor::getStockStateString() {
     readLightSensor();  // 현재 상태 업데이트
-    if (currentLightValue == STOCK_FULL) {
+    if (currentLightValue == STOCK_STATE_FULL) {
         return "LOW";   // 재고 있음 (레이저 빛 차단)
     } else {
         return "HIGH";  // 재고 없음 (레이저 빛 감지)

@@ -1,6 +1,7 @@
 #include "FloatSW.h"
 
-FloatSW::FloatSW(int pin, String name) : floatPin(pin), currentState(FLOAT_EMPTY_STATE), name(name) {
+FloatSW::FloatSW(int pin, String name) 
+    : floatPin(pin), currentState(FLOAT_STATE_EMPTY), name(name) {
     pinMode(floatPin, INPUT_PULLUP);  // 내부 풀업 저항 사용
     currentState = digitalRead(floatPin);  // 초기 상태 읽기
     Serial.println(name + " FloatSW initialized");
@@ -13,17 +14,17 @@ int FloatSW::readState() {
 
 bool FloatSW::isLiquidPresent() {
     readState();  // 현재 상태 업데이트
-    return (currentState == FLOAT_FULL_STATE);
+    return (currentState == FLOAT_STATE_FULL);
 }
 
 bool FloatSW::isLiquidEmpty() {
     readState();  // 현재 상태 업데이트
-    return (currentState == FLOAT_EMPTY_STATE);
+    return (currentState == FLOAT_STATE_EMPTY);
 }
 
 String FloatSW::getStateString() {
     readState();  // 현재 상태 업데이트
-    if (currentState == FLOAT_FULL_STATE) {
+    if (currentState == FLOAT_STATE_FULL) {
         return "FULL";
     } else {
         return "EMPTY";
