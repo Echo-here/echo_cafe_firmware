@@ -3,22 +3,32 @@
 #include <FloatSW.h>
 #include <StockSensor.h>
 #include <PumpMT.h>
+#include <SerialCommand.h>
 #include "Pin.h"
 
 ServoMT *sv[3];
 FloatSW *fs[3];
 StockSensor *ss[3];
 PumpMT *pm[3];
+SerialCommand *serialCmd;
 
 // 센서 값 전송 주기
-unsigned long previousMillis = 0;
+uint64_t previousMillis = 0;
+
+// 명령 실행 상태 추적
+bool isExecutingCommand = false;
+uint64_t commandStartTime = 0;
+uint64_t commandDuration = 0;
+CommandType currentCommandType = COMMAND_NONE;
 
 void setup() {
-  sv[0] = new ServoMT(SERVO_PIN, "Sugar");
-  fs[0] = new FloatSW(FLOAT_SWITCH_PIN, "Water");
+  sv[0] = new ServoMT(SERVO_PIN, "SugarDispenser");
+  fs[0] = new FloatSW(FLOAT_SWITCH_PIN, "WaterFloatSwitch");
   ss[0] = new StockSensor(LASER_PIN, DIGITAL_LIGHT_SENSOR_PIN, "SugarStock");
   pm[0] = new PumpMT(PUMP_RELAY_PIN, "WaterPump");
-  Serial.begin(SERIAL_BAUD_RATE); // 시리얼 통신 시작
+  serialCmd = new SerialCommand(SERIAL_BAUD_RATE);
+  
+  serialCmd->begin();
 
   delay(1000); // 서보 초기화 시간 대기
 
@@ -27,51 +37,99 @@ void setup() {
 }
 
 void loop() {
-  // ------------- 센서 값 주기적 전송 (1초마다) --------------
-  unsigned long currentMillis = millis();
+  uint64_t currentMillis = millis();
+  
+  // 센서 값 주기적 전송 (1초마다)
   if (currentMillis - previousMillis >= SENSOR_INTERVAL) {
     previousMillis = currentMillis;
 
-    // ------------- 조도 센서 (고체 재고) 상태 --------------
-    // StockSensor 라이브러리 사용
     Serial.print(LIGHT_STATE_PREFIX); 
     Serial.println(ss[0]->getStockStateString());
 
-    // ------------- 플로트 스위치 (액체 재고) 상태 --------------
-    // FloatSW 라이브러리 사용
     Serial.print(FLOAT_STATE_PREFIX);
     Serial.println(fs[0]->getStateString());
   }
 
-  // ------------- 아두이노 시리얼 명령 처리 (MQTT 주문 수신 시) --------------
-  if (Serial.available()) { 
-    String commandString = Serial.readStringUntil('\n'); 
-    commandString.trim(); 
-
-    if (commandString.startsWith(String(SUGAR_COMMAND_PREFIX))) { // 'S'(Sugar)로 시작하면 서보 작동
-      Serial.println("Sugar command received");
-      float floatValue = commandString.substring(1).toFloat(); 
-      int openDurationMs = (int)(floatValue * 1000); 
-
-      if (openDurationMs > 0) { 
-        sv[0]->setMaxAngle(); 
-        delay(openDurationMs);       
-        sv[0]->setMinAngle(); 
+  // 명령 실행 중인지 확인
+  if (isExecutingCommand) {
+    if (currentMillis - commandStartTime >= commandDuration) {
+      // 명령 실행 완료
+      switch (currentCommandType) {
+        case COMMAND_SUGAR:
+          sv[0]->setMinAngle(); // 서보 닫기
+          serialCmd->printSuccess("Sugar dispensing completed");
+          break;
+          
+        case COMMAND_WATER:
+          // PumpMT의 runForDuration에서 자동으로 정지됨
+          serialCmd->printSuccess("Water pumping completed");
+          break;
+          
+        default:
+          break;
       }
-    } 
-    
-    else if (commandString.startsWith(String(WATER_COMMAND_PREFIX))) { // 'W'로 시작하면 펌프 작동
-      float floatValue = commandString.substring(1).toFloat();
-      int pumpDurationMs = (int)(floatValue * 1000);
-
-      if (pumpDurationMs > 0) {
-        pm[0]->runForDuration(pumpDurationMs);
-      }
+      
+      // 명령 실행 상태 초기화
+      isExecutingCommand = false;
+      currentCommandType = COMMAND_NONE;
+      commandDuration = 0;
     }
-
-    // 시리얼 버퍼 비우기
-    while (Serial.available()) {
-      Serial.read();
+  } else {
+    // 새로운 명령 처리
+    Command cmd = serialCmd->readCommand();
+    
+    if (cmd.type != COMMAND_NONE) {
+      if (!cmd.isValid) {
+        serialCmd->printError(cmd.errorMessage);
+        return;
+      }
+      
+      switch (cmd.type) {
+        case COMMAND_SUGAR: {
+          // 설탕 재고 확인
+          if (ss[0]->isStockEmpty()) {
+            serialCmd->printError("Sugar stock is empty!");
+            return;
+          }
+          
+          serialCmd->printSuccess("Sugar command received: " + String(cmd.value) + "s");
+          
+          // 비동기 실행 시작
+          isExecutingCommand = true;
+          currentCommandType = COMMAND_SUGAR;
+          commandStartTime = currentMillis;
+          commandDuration = (uint64_t)(cmd.value * 1000);
+          
+          sv[0]->setMaxAngle(); // 서보 열기
+          break;
+        }
+          
+        case COMMAND_WATER: {
+          // 물 재고 확인
+          if (fs[0]->isLiquidEmpty()) {
+            serialCmd->printError("Water tank is empty!");
+            return;
+          }
+          
+          serialCmd->printSuccess("Water command received: " + String(cmd.value) + "s");
+          
+          // 비동기 실행 시작
+          isExecutingCommand = true;
+          currentCommandType = COMMAND_WATER;
+          commandStartTime = currentMillis;
+          commandDuration = (uint64_t)(cmd.value * 1000);
+          
+          pm[0]->turnOn(); // 펌프 시작
+          break;
+        }
+          
+        case COMMAND_UNKNOWN:
+          serialCmd->printError("Unknown command: " + cmd.rawCommand);
+          break;
+          
+        default:
+          break;
+      }
     }
   }
 }
