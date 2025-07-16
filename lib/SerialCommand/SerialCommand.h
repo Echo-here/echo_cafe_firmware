@@ -8,6 +8,9 @@ enum CommandType {
     COMMAND_NONE,        // 명령 없음
     COMMAND_SUGAR,       // 설탕 분배 명령
     COMMAND_WATER,       // 물 펌핑 명령
+    COMMAND_COFFEE,      // 커피 분배 명령
+    COMMAND_ICEDTEA,     // 아이스티 분배 명령
+    COMMAND_GREENTEA,     // 녹차 분배 명령
     COMMAND_UNKNOWN      // 알 수 없는 명령
 };
 

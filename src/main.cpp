@@ -4,13 +4,14 @@
 #include <StockSensor.h>
 #include <PumpMT.h>
 #include <SerialCommand.h>
+#include <ArduinoJson.h>
 #include "Pin.h"
 
 // ===== 하드웨어 객체 배열 =====
-ServoMT *servoMotors[3];
-FloatSW *floatSwitches[3];
-StockSensor *stockSensors[3];
-PumpMT *pumps[3];
+ServoMT *servoMotors[5]; 
+FloatSW *floatSwitches[1]; 
+StockSensor *stockSensors[5];
+PumpMT *pumps[1]; 
 SerialCommand *serialCommand;
 
 // ===== 타이밍 변수 =====
@@ -31,6 +32,9 @@ void processNewCommand();
 void executeCommand(const Command& command);
 void executeSugarCommand(const Command& command);
 void executeWaterCommand(const Command& command);
+void executeCoffeeCommand(const Command& command);
+void executeIcedTeaCommand(const Command& command);
+void executeGreenTeaCommand(const Command& command);
 void startCommandExecution(CommandType commandType, float duration);
 
 /**
@@ -38,10 +42,24 @@ void startCommandExecution(CommandType commandType, float duration);
  */
 void setup() {
     // ===== 하드웨어 객체 생성 =====
-    servoMotors[0] = new ServoMT(PIN_SERVO_MOTOR, "SugarDispenser");
-    floatSwitches[0] = new FloatSW(PIN_FLOAT_SWITCH, "WaterFloatSwitch");
-    stockSensors[0] = new StockSensor(PIN_LASER_MODULE, PIN_LIGHT_SENSOR_DIGITAL, "SugarStock");
-    pumps[0] = new PumpMT(PIN_PUMP_RELAY, "WaterPump");
+    // 서보 모터 및 재고 센서 확장 (설탕, 커피, 아이스티, 녹차)
+    servoMotors[0] = new ServoMT(PIN_SUGAR_SERVO, "SugarDispenser");
+    stockSensors[0] = new StockSensor(PIN_SUGAR_LASER, PIN_SUGAR_SENSOR, "SugarStock");
+    
+    servoMotors[1] = new ServoMT(PIN_COFFEE_SERVO, "CoffeeDispenser");
+    stockSensors[1] = new StockSensor(PIN_COFFEE_LASER, PIN_COFFEE_SENSOR, "CoffeeStock");
+    
+    servoMotors[2] = new ServoMT(PIN_ICEDTEA_SERVO, "IcedTeaDispenser");
+    stockSensors[2] = new StockSensor(PIN_ICEDTEA_LASER, PIN_ICEDTEA_SENSOR, "IcedTeaStock");
+    
+    servoMotors[3] = new ServoMT(PIN_GREENTEA_SERVO, "GreenTeaDispenser");
+    stockSensors[3] = new StockSensor(PIN_GREENTEA_LASER, PIN_GREENTEA_SENSOR, "GreenTeaStock");
+    
+    // 물 펌프 및 플로트 스위치
+    pumps[0] = new PumpMT(PIN_WATER_PUMP, "WaterPump");
+    floatSwitches[0] = new FloatSW(PIN_WATER_FLOAT_SWITCH, "WaterFloatSwitch");
+    
+    // 시리얼 명령 핸들러
     serialCommand = new SerialCommand(BAUD_RATE_SERIAL);
     
     // ===== 시리얼 통신 초기화 =====
@@ -51,7 +69,9 @@ void setup() {
     delay(1000);
 
     // ===== 레이저 모듈 활성화 =====
-    stockSensors[0]->turnOnLaser();
+    for (int i = 0; i < 4; i++) {
+        stockSensors[i]->turnOnLaser();
+    }
     
     Serial.println("CafeFirmware initialized successfully");
 }
@@ -81,13 +101,19 @@ void loop() {
  * @brief 센서 데이터 전송
  */
 void sendSensorData() {
-    // 조도 센서 (고체 재고) 상태 전송
-    Serial.print(STR_LIGHT_STATE_PREFIX); 
-    Serial.println(stockSensors[0]->getStockStateString());
+    // ArduinoJson 라이브러리 사용
+    StaticJsonDocument<256> doc; // JSON 문서 생성
 
-    // 플로트 스위치 (액체 재고) 상태 전송
-    Serial.print(STR_FLOAT_STATE_PREFIX);
-    Serial.println(floatSwitches[0]->getStateString());
+    // 각 센서 상태를 JSON 문서에 추가
+    doc["sugar"] = stockSensors[0]->getStockStateString();
+    doc["coffee"] = stockSensors[1]->getStockStateString();
+    doc["icetea"] = stockSensors[2]->getStockStateString();
+    doc["greentea"] = stockSensors[3]->getStockStateString();
+    doc["water"] = floatSwitches[0]->getStateString();
+
+    // JSON 객체를 시리얼로 전송
+    serializeJson(doc, Serial);
+    Serial.println(); // 줄바꿈 추가
 }
 
 /**
@@ -114,6 +140,21 @@ void completeCommandExecution() {
         case COMMAND_WATER:
             pumps[0]->turnOff(); // 펌프 정지
             serialCommand->printSuccess("Water pumping completed");
+            break;
+            
+        case COMMAND_COFFEE:
+            servoMotors[1]->setMinAngle();
+            serialCommand->printSuccess("Coffee dispensing completed");
+            break;
+            
+        case COMMAND_ICEDTEA:
+            servoMotors[2]->setMinAngle();
+            serialCommand->printSuccess("IcedTea dispensing completed");
+            break;
+            
+        case COMMAND_GREENTEA:
+            servoMotors[3]->setMinAngle();
+            serialCommand->printSuccess("GreenTea dispensing completed");
             break;
             
         default:
@@ -163,6 +204,18 @@ void executeCommand(const Command& command) {
             executeWaterCommand(command);
             break;
             
+        case COMMAND_COFFEE:
+            executeCoffeeCommand(command);
+            break;
+            
+        case COMMAND_ICEDTEA:
+            executeIcedTeaCommand(command);
+            break;
+            
+        case COMMAND_GREENTEA:
+            executeGreenTeaCommand(command);
+            break;
+            
         case COMMAND_UNKNOWN:
             serialCommand->printError("Unknown command: " + command.rawCommand);
             break;
@@ -177,17 +230,13 @@ void executeCommand(const Command& command) {
  * @param command 설탕 명령
  */
 void executeSugarCommand(const Command& command) {
-    // 설탕 재고 확인
     if (stockSensors[0]->isStockEmpty()) {
         serialCommand->printError("Sugar stock is empty!");
         return;
     }
-    
     serialCommand->printSuccess("Sugar command received: " + String(command.value) + "s");
-    
-    // 비동기 실행 시작
     startCommandExecution(COMMAND_SUGAR, command.value);
-    servoMotors[0]->setMaxAngle(); // 서보 모터 열기
+    servoMotors[0]->setMaxAngle();
 }
 
 /**
@@ -195,17 +244,55 @@ void executeSugarCommand(const Command& command) {
  * @param command 물 명령
  */
 void executeWaterCommand(const Command& command) {
-    // 물 재고 확인
     if (floatSwitches[0]->isLiquidEmpty()) {
         serialCommand->printError("Water tank is empty!");
         return;
     }
-    
     serialCommand->printSuccess("Water command received: " + String(command.value) + "s");
-    
-    // 비동기 실행 시작
     startCommandExecution(COMMAND_WATER, command.value);
-    pumps[0]->turnOn(); // 펌프 시작
+    pumps[0]->turnOn();
+}
+
+/**
+ * @brief 커피 분배 명령 실행
+ * @param command 커피 명령
+ */
+void executeCoffeeCommand(const Command& command) {
+    if (stockSensors[1]->isStockEmpty()) {
+        serialCommand->printError("Coffee stock is empty!");
+        return;
+    }
+    serialCommand->printSuccess("Coffee command received: " + String(command.value) + "s");
+    startCommandExecution(COMMAND_COFFEE, command.value);
+    servoMotors[1]->setMaxAngle();
+}
+
+/**
+ * @brief 아이스티 분배 명령 실행
+ * @param command 아이스티 명령
+ */
+void executeIcedTeaCommand(const Command& command) {
+    if (stockSensors[2]->isStockEmpty()) {
+        serialCommand->printError("IcedTea stock is empty!");
+        return;
+    }
+    serialCommand->printSuccess("IcedTea command received: " + String(command.value) + "s");
+    startCommandExecution(COMMAND_ICEDTEA, command.value);
+    servoMotors[2]->setMaxAngle();
+}
+
+/**
+ * @brief 녹차 분배 명령 실행
+ * @param command 녹차 명령
+ */
+void executeGreenTeaCommand(const Command& command) {
+    if (stockSensors[3]->isStockEmpty()) {
+        serialCommand->printError("GreenTea stock is empty!");
+        return;
+    }
+    serialCommand->printSuccess("GreenTea command received: " + String(command.value) + "s");
+    startCommandExecution(COMMAND_GREENTEA, command.value);
+    servoMotors[3]->setMaxAngle();
 }
 
 /**

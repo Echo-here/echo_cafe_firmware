@@ -25,9 +25,9 @@ bool FloatSW::isLiquidEmpty() {
 String FloatSW::getStateString() {
     readState();  // 현재 상태 업데이트
     if (currentState == FLOAT_STATE_FULL) {
-        return "FULL";
+        return "HIGH";
     } else {
-        return "EMPTY";
+        return "LOW";
     }
 }
 
